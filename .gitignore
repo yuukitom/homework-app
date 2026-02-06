@@ -34,3 +34,5 @@ bk/
 # local sqlite database
 homework.db
 .devcontainer/
+# test case excel file
+宿題管理アプリ_テストケース.xlsx
