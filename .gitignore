@@ -33,3 +33,4 @@ activate.txt
 bk/
 # local sqlite database
 homework.db
+.devcontainer/
