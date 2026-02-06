@@ -27,3 +27,5 @@ __pycache__/
 *.pyc
 .DS_Store
 activate.txt
+.streamlit/secrets.toml
+bk/

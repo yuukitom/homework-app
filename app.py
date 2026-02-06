@@ -1,13 +1,19 @@
-import sqlite3
+import os
 from datetime import date, datetime
 import time
 import streamlit as st
+import psycopg
 
 DB_PATH = "homework.db"
 
+# データベース接続取得（本番用）
+# def get_conn():
+#     return psycopg.connect(st.secrets["DB_URL"])
 
+
+# データベース接続取得（テスト用）
 def get_conn():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+    return psycopg.connect(st.secrets["DB_URL"] if "DB_URL" in st.secrets else os.environ["DB_URL"])
 
 
 # データベース初期化
@@ -18,7 +24,7 @@ def init_db():
     cur.execute(
         """
     CREATE TABLE IF NOT EXISTS children (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         name TEXT NOT NULL
     )
     """
@@ -28,7 +34,7 @@ def init_db():
     cur.execute(
         """
     CREATE TABLE IF NOT EXISTS tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         child_id INTEGER NOT NULL,
         title TEXT NOT NULL,
         due_date TEXT NOT NULL,              -- 'YYYY-MM-DD'
@@ -51,12 +57,12 @@ def init_db():
 
     cur.execute("SELECT COUNT(*) FROM children")
     if cur.fetchone()[0] == 0:
-        cur.execute("INSERT INTO children(name) VALUES (?)", ("YUMA",))
+        cur.execute("INSERT INTO children(name) VALUES (%s)", ("YUMA",))
 
     # 初期値：ご褒美に必要な⭐数 = 10（無ければ入れる）
     cur.execute("SELECT value FROM settings WHERE key='reward_threshold'")
     if cur.fetchone() is None:
-        cur.execute("INSERT INTO settings(key, value) VALUES (?, ?)", ("reward_threshold", "10"))
+        cur.execute("INSERT INTO settings(key, value) VALUES (%s, %s)", ("reward_threshold", "10"))
 
     conn.commit()
     conn.close()
@@ -77,7 +83,7 @@ def add_task(child_id: int, title: str, due_date_str: str):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO tasks(child_id, title, due_date, progress, is_completed) VALUES (?, ?, ?, 0, 0)",
+        "INSERT INTO tasks(child_id, title, due_date, progress, is_completed) VALUES (%s, %s, %s, 0, 0)",
         (child_id, title, due_date_str),
     )
     conn.commit()
@@ -92,7 +98,7 @@ def list_tasks(child_id: int):
         """
         SELECT id, title, due_date, progress, is_completed
         FROM tasks
-        WHERE child_id=?
+        WHERE child_id=%s
         ORDER BY due_date ASC, id DESC
     """,
         (child_id,),
@@ -116,8 +122,8 @@ def update_progress(task_id: int, progress: int):
     cur.execute(
         """
         UPDATE tasks
-        SET progress=?, is_completed=?
-        WHERE id=?
+        SET progress=%s, is_completed=%s
+        WHERE id=%s
     """,
         (progress, is_completed, task_id),
     )
@@ -131,7 +137,7 @@ def count_stars(child_id: int) -> int:
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        "SELECT COUNT(*) FROM tasks WHERE child_id=? AND is_completed=1",
+        "SELECT COUNT(*) FROM tasks WHERE child_id=%s AND is_completed=1",
         (child_id,),
     )
     stars = cur.fetchone()[0]
@@ -143,7 +149,7 @@ def count_stars(child_id: int) -> int:
 def get_setting(key: str, default: str) -> str:
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT value FROM settings WHERE key=?", (key,))
+    cur.execute("SELECT value FROM settings WHERE key=%s", (key,))
     row = cur.fetchone()
     conn.close()
     return row[0] if row else default
@@ -155,7 +161,7 @@ def set_setting(key: str, value: str):
     cur.execute(
         """
         INSERT INTO settings(key, value)
-        VALUES (?, ?)
+        VALUES (%s, %s)
         ON CONFLICT(key) DO UPDATE SET value=excluded.value
     """,
         (key, value),
@@ -168,7 +174,7 @@ def delete_task(task_id: int):
     """宿題を1件削除"""
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+    cur.execute("DELETE FROM tasks WHERE id=%s", (task_id,))
     conn.commit()
     conn.close()
 
@@ -198,7 +204,7 @@ def reset_tasks(child_id: int):
     """子ども単位で宿題を全削除（リセット）"""
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("DELETE FROM tasks WHERE child_id=?", (child_id,))
+    cur.execute("DELETE FROM tasks WHERE child_id=%s", (child_id,))
     conn.commit()
     conn.close()
 
@@ -244,7 +250,7 @@ with tabs[0]:
     stars = count_stars(child_id)
 
     st.subheader("⭐ ご褒美までの進捗")
-    st.write(f"いまの⭐**{stars}** / ご褒美まで **{REWARD_THRESHOLD}**")
+    st.write(f"いまの⭐**{stars}** / ゴール🎉 **{REWARD_THRESHOLD}**")
 
     # progressは0.0〜1.0
     st.progress(min(1.0, stars / REWARD_THRESHOLD))
